@@ -60,33 +60,29 @@ jobs:
 
       - name: Deploy to Koyeb (create or update service)
         env:
-          KOYEB_API_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}
-          KOYEB_ORG: ${{ secrets.KOYEB_ORG }}
+          KOYEB_API_TOKEN: ${{ secrets.KOYEB_API_TOKEN }} # user token
           KOYEB_APP: ${{ secrets.KOYEB_APP }}
           KOYEB_SERVICE: ${{ secrets.KOYEB_SERVICE }}
           IMAGE: ${{ needs.build-and-push.outputs.image }}
         run: |
           set -euo pipefail
 
-          # Login with token and target organization (org ID)
-          koyeb login --token "$KOYEB_API_TOKEN" --organization "$KOYEB_ORG"
+          # Login using user token; default org is auto-selected
+          koyeb login --token "$KOYEB_API_TOKEN"
 
-          # Ensure the app exists (scoped to the org)
-          koyeb apps get "$KOYEB_APP" --organization "$KOYEB_ORG" >/dev/null 2>&1 \
-            || koyeb apps create "$KOYEB_APP" --organization "$KOYEB_ORG"
+          # Ensure the app exists
+          koyeb apps get "$KOYEB_APP" >/dev/null 2>&1 || koyeb apps create "$KOYEB_APP"
 
-          # Create or update the service on the Free instance
-          if koyeb services get "$KOYEB_APP/$KOYEB_SERVICE" --organization "$KOYEB_ORG" >/dev/null 2>&1; then
+          # Create or update the service on the free instance
+          if koyeb services get "$KOYEB_APP/$KOYEB_SERVICE" >/dev/null 2>&1; then
             koyeb services update "$KOYEB_APP/$KOYEB_SERVICE" \
               --docker "$IMAGE" \
               --routes "/:80" \
-              --instance-type "free" \
-              --organization "$KOYEB_ORG"
+              --instance-type "free"
           else
             koyeb services create "$KOYEB_SERVICE" \
               --app "$KOYEB_APP" \
               --docker "$IMAGE" \
               --routes "/:80" \
-              --instance-type "free" \
-              --organization "$KOYEB_ORG"
+              --instance-type "free"
           fi
