@@ -2,7 +2,7 @@ name: Build & Deploy (Koyeb)
 
 on:
   push:
-    branches: [ "master" ]   # your default branch
+    branches: [ "master" ]
   workflow_dispatch:
 
 permissions:
@@ -16,7 +16,9 @@ jobs:
     env:
       REGISTRY: ghcr.io
       DOCKER_BUILDKIT: 1
-      BUILDKIT_PROGRESS: plain    # 👈 plain logs in Actions
+      BUILDKIT_PROGRESS: plain
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,7 +29,7 @@ jobs:
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           repo="${GITHUB_REPOSITORY##*/}"
           repo="${repo,,}"
-          echo "IMAGE=${REGISTRY}/${owner}/${repo}:latest" >> $GITHUB_ENV
+          echo "image=${REGISTRY}/${owner}/${repo}:latest" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -44,11 +46,10 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ env.IMAGE }}
+          tags: ${{ steps.meta.outputs.image }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
-  
 
   deploy:
     needs: build-and-push
@@ -60,25 +61,32 @@ jobs:
       - name: Deploy to Koyeb (create or update service)
         env:
           KOYEB_API_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}
+          KOYEB_ORG: ${{ secrets.KOYEB_ORG }}
           KOYEB_APP: ${{ secrets.KOYEB_APP }}
           KOYEB_SERVICE: ${{ secrets.KOYEB_SERVICE }}
-          IMAGE: ${{ env.IMAGE }}
+          IMAGE: ${{ needs.build-and-push.outputs.image }}
         run: |
-          koyeb auth login --token "$KOYEB_API_TOKEN" >/dev/null 2>&1 || true
+          set -euo pipefail
 
-          # Create app if it doesn't exist
-          koyeb app get "$KOYEB_APP" >/dev/null 2>&1 || koyeb app create "$KOYEB_APP"
+          # Login with token and target organization (org ID)
+          koyeb login --token "$KOYEB_API_TOKEN" --organization "$KOYEB_ORG"
 
-          # Create or update the service on the free instance
-          if koyeb service get "$KOYEB_APP/$KOYEB_SERVICE" >/dev/null 2>&1; then
-            koyeb service update "$KOYEB_APP/$KOYEB_SERVICE" \
+          # Ensure the app exists (scoped to the org)
+          koyeb apps get "$KOYEB_APP" --organization "$KOYEB_ORG" >/dev/null 2>&1 \
+            || koyeb apps create "$KOYEB_APP" --organization "$KOYEB_ORG"
+
+          # Create or update the service on the Free instance
+          if koyeb services get "$KOYEB_APP/$KOYEB_SERVICE" --organization "$KOYEB_ORG" >/dev/null 2>&1; then
+            koyeb services update "$KOYEB_APP/$KOYEB_SERVICE" \
               --docker "$IMAGE" \
               --routes "/:80" \
-              --instance-type "free"
+              --instance-type "free" \
+              --organization "$KOYEB_ORG"
           else
-            koyeb service create "$KOYEB_SERVICE" \
+            koyeb services create "$KOYEB_SERVICE" \
               --app "$KOYEB_APP" \
               --docker "$IMAGE" \
               --routes "/:80" \
-              --instance-type "free"
+              --instance-type "free" \
+              --organization "$KOYEB_ORG"
           fi
