@@ -55,34 +55,44 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      # Install Koyeb CLI WITHOUT touching GitHub releases API
       - name: Install Koyeb CLI
-        uses: koyeb-community/koyeb-actions@v2
+        run: |
+          curl -sL https://get.koyeb.com | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "/usr/local/bin" >> $GITHUB_PATH
+          koyeb --version || true
 
       - name: Deploy to Koyeb (create or update service)
         env:
-          KOYEB_API_TOKEN: ${{ secrets.KOYEB_API_TOKEN }} # user token
+          KOYEB_API_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}   # must be a USER token
           KOYEB_APP: ${{ secrets.KOYEB_APP }}
           KOYEB_SERVICE: ${{ secrets.KOYEB_SERVICE }}
           IMAGE: ${{ needs.build-and-push.outputs.image }}
         run: |
           set -euo pipefail
 
-          # Login using user token; default org is auto-selected
-          koyeb login --token "$KOYEB_API_TOKEN"
+          # Sanity: ensure token is present
+          if [ -z "${KOYEB_API_TOKEN:-}" ]; then
+            echo "KOYEB_API_TOKEN is empty. Add it as a repository secret."; exit 1;
+          fi
 
-          # Ensure the app exists
-          koyeb apps get "$KOYEB_APP" >/dev/null 2>&1 || koyeb apps create "$KOYEB_APP"
+          # Ensure app exists (pass --token on every command; no interactive login)
+          koyeb apps get "$KOYEB_APP" --token "$KOYEB_API_TOKEN" >/dev/null 2>&1 \
+            || koyeb apps create "$KOYEB_APP" --token "$KOYEB_API_TOKEN"
 
           # Create or update the service on the free instance
-          if koyeb services get "$KOYEB_APP/$KOYEB_SERVICE" >/dev/null 2>&1; then
+          if koyeb services get "$KOYEB_APP/$KOYEB_SERVICE" --token "$KOYEB_API_TOKEN" >/dev/null 2>&1; then
             koyeb services update "$KOYEB_APP/$KOYEB_SERVICE" \
               --docker "$IMAGE" \
               --routes "/:80" \
-              --instance-type "free"
+              --instance-type "free" \
+              --token "$KOYEB_API_TOKEN"
           else
             koyeb services create "$KOYEB_SERVICE" \
               --app "$KOYEB_APP" \
               --docker "$IMAGE" \
               --routes "/:80" \
-              --instance-type "free"
+              --instance-type "free" \
+              --token "$KOYEB_API_TOKEN"
           fi
