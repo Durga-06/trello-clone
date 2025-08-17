@@ -1,3 +1,4 @@
+import { AddNewItem } from "./AddNewItems";
 import { Card } from "./Card";
 import { ColumnContainer, ColumnTitle } from "./styles";
 
@@ -12,6 +13,7 @@ export const Column = ({text}: ColumnProps) => {
       <Card text="Generate app scaffold"/>
       <Card text="Learn TypeScript"/>
       <Card text="Begin to use static typing"/>
+      <AddNewItem onAdd={(e) => console.log(e)} toggleButtonText="+ Add another item" dark/>
     </ColumnContainer>
   );
 };
