@@ -1,19 +1,30 @@
 import { AddNewItem } from "./AddNewItems";
 import { Card } from "./Card";
 import { ColumnContainer, ColumnTitle } from "./styles";
+import { useAppState } from "./state/AppStateContext";
+import { addTask } from "./state/actions";
 
 type ColumnProps = {
   text: string;
+  id: string;
 };
 
-export const Column = ({text}: ColumnProps) => {
+export const Column = ({ text, id }: ColumnProps) => {
+  const { getTasksByListId, dispatch } = useAppState();
+
+  const tasks = getTasksByListId(id);
+
   return (
-    <ColumnContainer>
+    <ColumnContainer id={id} key={id}>
       <ColumnTitle>{text}</ColumnTitle>
-      <Card text="Generate app scaffold"/>
-      <Card text="Learn TypeScript"/>
-      <Card text="Begin to use static typing"/>
-      <AddNewItem onAdd={(e) => console.log(e)} toggleButtonText="+ Add another item" dark/>
+      {tasks.map((task) => (
+        <Card key={task.id} text={task.text} id={task.id} />
+      ))}
+      <AddNewItem
+        onAdd={(text) => dispatch(addTask(text, id))}
+        toggleButtonText="+ Add another item"
+        dark
+      />
     </ColumnContainer>
   );
 };
